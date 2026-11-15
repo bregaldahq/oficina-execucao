@@ -1,0 +1,55 @@
+openapi: 3.0.3
+info:
+  title: Oficina Mecânica — Execução
+  description: |
+    Serviço de Execução: fila de trabalho da oficina, diagnóstico e reparo.
+    Todas as rotas ficam sob `/api/execution`. O contrato entre os serviços está em
+    `docs/fase-4/CONTRATOS.md`, no repositório `oficina-api`.
+  version: 0.1.0
+servers:
+  - url: /
+paths:
+  /api/execution/health:
+    get:
+      summary: Liveness
+      description: O processo está de pé. Não consulta dependências.
+      tags: [Saúde]
+      security: []
+      responses:
+        "200":
+          description: Serviço no ar
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /api/execution/ready:
+    get:
+      summary: Readiness
+      description: As dependências do serviço respondem.
+      tags: [Saúde]
+      security: []
+      responses:
+        "200":
+          description: Pronto para receber tráfego
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+        "503":
+          description: Dependência indisponível
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Health:
+      type: object
+      properties:
+        status: { type: string, example: ok }
+        service: { type: string, example: oficina-execucao }
+        version: { type: string, example: 0.1.0 }
+        timestamp: { type: string, format: date-time }
+security:
+  - bearerAuth: []
