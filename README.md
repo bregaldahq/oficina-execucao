@@ -1,5 +1,9 @@
 # oficina-execucao
 
+[![PR](https://github.com/bregaldahq/oficina-execucao/actions/workflows/pr.yml/badge.svg?branch=develop)](https://github.com/bregaldahq/oficina-execucao/actions/workflows/pr.yml)
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=bregaldahq_oficina-execucao&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=bregaldahq_oficina-execucao)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=bregaldahq_oficina-execucao&metric=coverage)](https://sonarcloud.io/component_measures?id=bregaldahq_oficina-execucao&metric=coverage)
+
 Serviço de **Execução** do sistema Oficina Mecânica (Tech Challenge SOAT, Fase 4):
 fila de trabalho da oficina, diagnóstico e reparo.
 
@@ -100,8 +104,15 @@ do repositório principal: `bin/ws e2e --fase4`. Para subir os recursos à mão 
 - SonarCloud com quality gate no PR (projeto `bregaldahq_oficina-execucao`).
 - `main` e `develop` protegidas: só entram por PR com as checagens verdes.
 
-<!-- Evidências (badges do Sonar e da cobertura, link do último run) entram aqui quando o
-     primeiro pipeline rodar no GitHub. -->
+### Evidências
+
+- **Cobertura por PR:** cada run do [`pr.yml`](https://github.com/bregaldahq/oficina-execucao/actions/workflows/pr.yml)
+  escreve a linha de cobertura no resumo do run e guarda o `coverage.xml` como artefato
+  (`cobertura`); abaixo de 80% o job falha.
+- **Qualidade:** [SonarCloud](https://sonarcloud.io/summary/new_code?id=bregaldahq_oficina-execucao), com o
+  quality gate como checagem obrigatória do PR.
+- **Deploy:** cada run do [`deploy.yml`](https://github.com/bregaldahq/oficina-execucao/actions/workflows/deploy.yml)
+  roda os testes antes, faz o smoke depois e marca o deploy no New Relic.
 
 ## CI/CD
 
