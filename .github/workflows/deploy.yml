@@ -43,6 +43,7 @@ jobs:
           composer install --no-interaction --prefer-dist --no-progress
           vendor/bin/phpunit --coverage-clover coverage.xml
           php bin/check-coverage.php coverage.xml 80
+          vendor/bin/behat --no-colors
 
       - name: Autenticar na AWS via OIDC
         uses: aws-actions/configure-aws-credentials@v4
@@ -139,19 +140,23 @@ jobs:
           NS: ${{ steps.ssm.outputs.namespace }}
         run: |
           set -euo pipefail
-          kubectl -n "$NS" patch deployment "$APP" \
-            -p '{"spec":{"template":{"metadata":{"annotations":{"oficina/newrelic-key-hash":"${{ steps.nrsecret.outputs.keyhash }}"}}}}}'
+          for deploy in "${APP}" "${APP}-worker"; do
+            kubectl -n "$NS" patch deployment "$deploy" \
+              -p '{"spec":{"template":{"metadata":{"annotations":{"oficina/newrelic-key-hash":"${{ steps.nrsecret.outputs.keyhash }}"}}}}}'
+          done
 
       - name: Aguardar rollout
         env:
           NS: ${{ steps.ssm.outputs.namespace }}
         run: |
           set -euo pipefail
-          if ! kubectl -n "$NS" rollout status "deployment/${APP}" --timeout=600s; then
-            kubectl -n "$NS" describe "deployment/${APP}" || true
-            kubectl -n "$NS" logs -l "app=${APP}" --all-containers --tail=200 || true
-            exit 1
-          fi
+          for deploy in "${APP}" "${APP}-worker"; do
+            if ! kubectl -n "$NS" rollout status "deployment/${deploy}" --timeout=600s; then
+              kubectl -n "$NS" describe "deployment/${deploy}" || true
+              kubectl -n "$NS" logs -l "app=${deploy}" --all-containers --tail=200 || true
+              exit 1
+            fi
+          done
 
       - name: Smoke test em /api/execution/ready
         env:

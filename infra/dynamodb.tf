@@ -37,6 +37,13 @@ resource "aws_dynamodb_table" "main" {
     projection_type = "ALL"
   }
 
+  # Inbox e outbox publicada expiram sozinhas (expires_at, em segundos desde 1970). A tarefa e
+  # a linha do tempo não têm o atributo e ficam para sempre.
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
+
   point_in_time_recovery {
     enabled = var.environment == "prod"
   }

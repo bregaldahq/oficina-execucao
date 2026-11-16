@@ -7,7 +7,8 @@ require_once __DIR__ . '/../vendor/autoload.php';
 use App\Infrastructure\Config\EnvLoader;
 
 EnvLoader::loadFile(__DIR__ . '/../.env');
-EnvLoader::require(['JWT_SECRET']);
+// No container as variáveis vêm do ambiente; o entrypoint as grava no .env.
+EnvLoader::require(['JWT_SECRET', 'DYNAMODB_TABLE', 'MESSAGING_TOPIC_ARN']);
 
 const SERVICE = 'oficina-execucao';
 const PREFIX  = '/api/execution';
@@ -40,8 +41,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 $jwtProvider    = \App\Infrastructure\Security\JwtProvider::fromEnv();
 $authMiddleware = new \App\Presentation\Middleware\AuthMiddleware($jwtProvider, $context);
 
-// A checagem do DynamoDB entra junto com o repositório, na etapa que implementa o serviço.
-$healthController = new \App\Presentation\Controller\HealthController('dynamodb', static fn (): bool => true);
+$services = new \App\Infrastructure\ServiceFactory($_ENV + getenv());
+
+// Readiness: uma leitura por chave na tabela do serviço. Chave inexistente responde vazio; o que
+// faz a sonda falhar é a tabela não responder.
+$healthController = new \App\Presentation\Controller\HealthController(
+    'dynamodb',
+    static function () use ($services): bool {
+        $services->repository()->find('readiness-probe');
+
+        return true;
+    },
+);
+
+$taskController = $services->taskController($logger);
+
+/** @return array<string, mixed> */
+$body = static function (): array {
+    $data = json_decode((string)file_get_contents('php://input'), true);
+
+    return is_array($data) ? $data : [];
+};
 
 $router = new \App\Presentation\Router\Router();
 $router->setAuthMiddleware($authMiddleware);
@@ -52,6 +72,18 @@ $router->setAuthMiddleware($authMiddleware);
 
 $router->get(PREFIX . '/health', fn () => $healthController->live(), requireAuth: false);
 $router->get(PREFIX . '/ready', fn () => $healthController->ready(), requireAuth: false);
+
+// a fila da oficina e as ações do mecânico: tudo de admin
+$router->get(PREFIX . '/tasks', fn () => $taskController->index($_GET))->requireRole('admin');
+$router->get(PREFIX . '/tasks/{id}', fn ($p) => $taskController->show($p))->requireRole('admin');
+$router->post(PREFIX . '/tasks/{id}/diagnosis/start', fn ($p) => $taskController->startDiagnosis($p))->requireRole('admin');
+$router->post(PREFIX . '/tasks/{id}/diagnosis/complete', fn ($p) => $taskController->completeDiagnosis($p, $body()))
+    ->requireRole('admin');
+$router->post(PREFIX . '/tasks/{id}/diagnosis/fail', fn ($p) => $taskController->failDiagnosis($p, $body()))
+    ->requireRole('admin');
+$router->post(PREFIX . '/tasks/{id}/repair/start', fn ($p) => $taskController->startRepair($p))->requireRole('admin');
+$router->post(PREFIX . '/tasks/{id}/repair/complete', fn ($p) => $taskController->completeRepair($p))->requireRole('admin');
+$router->post(PREFIX . '/tasks/{id}/repair/fail', fn ($p) => $taskController->failRepair($p, $body()))->requireRole('admin');
 
 $method = (string)($_SERVER['REQUEST_METHOD'] ?? 'GET');
 $uri    = (string)($_SERVER['REQUEST_URI'] ?? '/');

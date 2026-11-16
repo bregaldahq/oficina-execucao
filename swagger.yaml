@@ -5,7 +5,7 @@ info:
     Serviço de Execução: fila de trabalho da oficina, diagnóstico e reparo.
     Todas as rotas ficam sob `/api/execution`. O contrato entre os serviços está em
     `docs/fase-4/CONTRATOS.md`, no repositório `oficina-api`.
-  version: 0.1.0
+  version: 1.0.0
 servers:
   - url: /
 paths:
@@ -37,7 +37,216 @@ paths:
                 $ref: "#/components/schemas/Health"
         "503":
           description: Dependência indisponível
+  /api/execution/tasks:
+    get:
+      summary: Fila da oficina
+      description: As tarefas de um status, das mais antigas para as mais novas.
+      tags: [Tarefas]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/TaskStatus"
+          description: Padrão `QUEUED_DIAGNOSIS`.
+      responses:
+        "200":
+          description: Lista de tarefas
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Task"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /api/execution/tasks/{id}:
+    get:
+      summary: Tarefa com a linha do tempo
+      tags: [Tarefas]
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200":
+          description: A tarefa
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Task"
+                  - type: object
+                    properties:
+                      timeline:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/TimelineEntry"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/execution/tasks/{id}/diagnosis/start:
+    post:
+      summary: Iniciar o diagnóstico
+      description: Tira a tarefa da fila. Publica `diagnosis.started`.
+      tags: [Diagnóstico]
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200": { $ref: "#/components/responses/Task" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /api/execution/tasks/{id}/diagnosis/complete:
+    post:
+      summary: Concluir o diagnóstico
+      description: Registra os serviços e as peças levantados. Publica `diagnosis.completed`, que segue para o orçamento.
+      tags: [Diagnóstico]
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    description: Leva `service_item_id` ou `part_id`, e só um dos dois.
+                    properties:
+                      service_item_id: { type: string }
+                      part_id: { type: string }
+                      quantity: { type: integer, minimum: 1, default: 1 }
+            example:
+              items:
+                - service_item_id: 5f0c1c0e-0000-4000-8000-000000000001
+                - part_id: 5f0c1c0e-0000-4000-8000-000000000002
+                  quantity: 2
+      responses:
+        "200": { $ref: "#/components/responses/Task" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /api/execution/tasks/{id}/diagnosis/fail:
+    post:
+      summary: Registrar falha no diagnóstico
+      description: Publica `diagnosis.failed`; a saga cancela a ordem de serviço.
+      tags: [Diagnóstico]
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      requestBody:
+        $ref: "#/components/requestBodies/Reason"
+      responses:
+        "200": { $ref: "#/components/responses/Task" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /api/execution/tasks/{id}/repair/start:
+    post:
+      summary: Iniciar o reparo
+      description: Só depois de o orquestrador enfileirar o reparo (orçamento aprovado e pago). Publica `repair.started`.
+      tags: [Reparo]
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200": { $ref: "#/components/responses/Task" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /api/execution/tasks/{id}/repair/complete:
+    post:
+      summary: Concluir o reparo
+      description: Publica `repair.completed`; a saga encerra e a OS vai para `FINISHED`.
+      tags: [Reparo]
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200": { $ref: "#/components/responses/Task" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /api/execution/tasks/{id}/repair/fail:
+    post:
+      summary: Registrar falha no reparo
+      description: Publica `repair.failed`; a saga estorna o pagamento e cancela a OS.
+      tags: [Reparo]
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      requestBody:
+        $ref: "#/components/requestBodies/Reason"
+      responses:
+        "200": { $ref: "#/components/responses/Task" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Invalid" }
 components:
+  parameters:
+    TaskId:
+      name: id
+      in: path
+      required: true
+      description: Id da ordem de serviço (uma tarefa por OS).
+      schema: { type: string }
+  requestBodies:
+    Reason:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [reason]
+            properties:
+              reason: { type: string, example: peça com defeito }
+  responses:
+    Task:
+      description: A tarefa depois da ação
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Task"
+    Unauthorized:
+      description: Token ausente, expirado ou inválido
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: O token não é de `admin`
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Não há tarefa para essa ordem de serviço
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: A tarefa foi alterada por outra operação; tente de novo
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Invalid:
+      description: A tarefa não aceita essa ação no status atual, ou o corpo é inválido
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
   securitySchemes:
     bearerAuth:
       type: http
@@ -51,5 +260,45 @@ components:
         service: { type: string, example: oficina-execucao }
         version: { type: string, example: 0.1.0 }
         timestamp: { type: string, format: date-time }
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+    TaskStatus:
+      type: string
+      enum: [QUEUED_DIAGNOSIS, DIAGNOSING, DIAGNOSED, QUEUED_REPAIR, REPAIRING, REPAIRED, DIAGNOSIS_FAILED, REPAIR_FAILED, CANCELLED]
+    TaskItem:
+      type: object
+      properties:
+        kind: { type: string, enum: [service, part] }
+        id: { type: string }
+        quantity: { type: integer }
+    TimelineEntry:
+      type: object
+      properties:
+        type: { type: string, example: diagnosis.started }
+        occurred_at: { type: string, format: date-time }
+        detail: { type: string, nullable: true }
+    Task:
+      type: object
+      properties:
+        id: { type: string, description: O id da ordem de serviço }
+        os_id: { type: string }
+        saga_id: { type: string }
+        status: { $ref: "#/components/schemas/TaskStatus" }
+        customer_name: { type: string }
+        vehicle:
+          type: object
+          properties:
+            license_plate: { type: string }
+            brand: { type: string }
+            model: { type: string }
+        description: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/TaskItem" }
+        failure_reason: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
 security:
   - bearerAuth: []
