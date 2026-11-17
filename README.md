@@ -119,7 +119,7 @@ do repositório principal: `bin/ws e2e --fase4`. Para subir os recursos à mão 
 | Workflow | Quando | O que faz |
 |---|---|---|
 | `pr.yml` | PR para `develop` ou `main` | estilo, PHPStan, testes com cobertura, Sonar, build da imagem, `kustomize build`, `terraform fmt` e `validate` |
-| `deploy.yml` | push em `develop` (hml) ou `main` (prod) | testes, `terraform apply` do `infra/`, imagem no ECR, `kubectl apply -k`, rollout e smoke |
+| `deploy.yml` | push em `develop` (hml); produção só por disparo manual com a ref `main` | testes, `terraform apply` do `infra/`, imagem no ECR, `kubectl apply -k`, rollout e smoke |
 | `destroy.yml` | só à mão (*Actions → Destroy*), digitando o ambiente | `terraform destroy` do `infra/`, preservando o ECR; roda antes do destroy do cluster e da fundação |
 
 Autenticação na AWS por OIDC, sem access key. Segredos de repositório: `AWS_ROLE_ARN`,
