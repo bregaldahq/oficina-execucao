@@ -8,8 +8,32 @@ repositório principal `oficina-mecanica`. O contrato entre os repos é
 `docs/fase-4/CONTRATOS.md`, no `oficina-api` (ele soma ao `docs/fase-3/CONTRATOS.md`). É
 normativo: se divergir daqui, o documento vence.
 
-**Estado: esqueleto.** Só existem `/api/execution/health` e `/api/execution/ready`. A regra de negócio,
-o worker e o acesso ao banco entram nas etapas seguintes do plano da Fase 4.
+## Camadas (`src/`)
+
+- **`Domain/`**: `WorkTask/WorkTask.php` é o agregado, uma tarefa por OS. Cada transição é um
+  método nomeado (`startDiagnosis`, `completeDiagnosis`, `failDiagnosis`, `queueRepair`,
+  `startRepair`, `completeRepair`, `failRepair`, `cancel`); **não existe `setStatus`**. Cada
+  transição registra a linha do tempo e, quando o serviço de OS precisa saber, um evento
+  (`releaseEvents()`). `Messaging/Message.php` é o envelope do contrato.
+- **`Application/`**: portas em `Port/`; um use case por ação do mecânico em `UseCase/Task/`
+  (todos sobre `TaskAction`); `HandleIncomingMessageUseCase` trata os comandos da fila;
+  `Worker/Worker.php` é o laço do worker.
+- **`Infrastructure/`**: `Aws/` (DynamoDB, SNS, SQS), `InMemory/` (os mesmos contratos em
+  memória, para testes e BDD), `ServiceFactory` (a montagem, usada pela API e pelo worker).
+- **`Presentation/`**: `TaskController` e o roteador.
+
+## Regras que não podem quebrar
+
+- **Estado e evento na mesma gravação.** Toda mudança passa por
+  `WorkTaskRepositoryInterface::save($task, $outbox, $inboxMessageId)`, que grava tudo numa
+  transação. Nunca publique direto no tópico a partir de um use case: quem publica é o
+  `OutboxRelay`, depois do `save` (na API) e a cada volta do worker.
+- **Todo handler roda duas vezes sem repetir efeito.** Comando novo precisa de teste com a mesma
+  mensagem e com o mesmo comando sob outro id.
+- **O desenho da tabela existe em três lugares** que mudam juntos: `infra/dynamodb.tf`,
+  `Infrastructure/Aws/DynamoDbWorkTaskRepository.php` e `scripts/localstack-init.sh`.
+- **O JSON do envelope é contrato.** `tests/Unit/Domain/MessageTest.php` tem o literal; os
+  outros serviços têm o mesmo.
 
 ## O que este repo tem
 
@@ -46,8 +70,10 @@ o worker e o acesso ao banco entram nas etapas seguintes do plano da Fase 4.
 ## Validar
 
 - A partir do repositório principal: `bin/ws verify --repo execucao`.
-- Aqui: `make test`, `make coverage` (falha abaixo de 80% das linhas de `src/`), `make stan`,
-  `make lint`.
+- Aqui: `make test`, `make bdd`, `make coverage` (falha abaixo de 80% das linhas de `src/`),
+  `make stan`, `make lint`.
+- Contra SNS, SQS e DynamoDB emulados: `bin/ws e2e --fase4`, no repositório principal. Os
+  testes daqui usam os adaptadores em memória; só o e2e exercita a tabela de verdade.
 - Sem conta AWS, o teto do `infra/` é `terraform fmt` e `validate` sem backend.
 
 ## Convenções

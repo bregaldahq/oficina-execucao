@@ -1,0 +1,47 @@
+# Worker: publica a outbox no tópico e consome a fila do serviço (bin/worker.php). É a mesma
+# imagem da API, com outro comando. Não recebe tráfego HTTP: sem Service, sem target group.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oficina-execucao-worker
+  labels:
+    app: oficina-execucao-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oficina-execucao-worker
+  # Recreate: dois workers na troca de versão só disputariam as mesmas mensagens.
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: oficina-execucao-worker
+    spec:
+      serviceAccountName: oficina-execucao
+      # O long polling da fila dura até 20 s: dá tempo de a volta atual terminar no SIGTERM.
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 33
+        runAsGroup: 33
+        fsGroup: 33
+      containers:
+        - name: worker
+          image: oficina-execucao
+          command: ["docker-entrypoint.sh", "php", "bin/worker.php"]
+          envFrom:
+            - configMapRef:
+                name: oficina-execucao-config
+            - secretRef:
+                name: oficina-execucao-secret
+            - secretRef:
+                name: oficina-newrelic
+                optional: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: "50m", memory: "64Mi" }
+            limits:   { cpu: "300m", memory: "192Mi" }
